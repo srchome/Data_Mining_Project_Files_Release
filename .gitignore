@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+outputs/
+webapp/static/uploads/
+model.joblib
+label_encoders.joblib
+*.png
+.env
