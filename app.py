@@ -1,6 +1,7 @@
 import sys
 import os
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, send_file
+import traceback
 import pandas as pd
 import joblib
 from sklearn.tree import DecisionTreeClassifier, plot_tree
@@ -30,118 +31,122 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    predictions = None
-    table = None
-    image_path = PLOT_PATH if os.path.exists(PLOT_PATH) else None
-    download_file = None
-    message = None
-    filename = None
-    prediction_counts = None
-    income_counts = None
-    # Read model info if available
-    model_type = None
-    training_file = None
+    try:
+        predictions = None
+        table = None
+        image_path = PLOT_PATH if os.path.exists(PLOT_PATH) else None
+        download_file = None
+        message = None
+        filename = None
+        prediction_counts = None
+        income_counts = None
+        # Read model info if available
+        model_type = None
+        training_file = None
 
-    model_file = os.path.join(OUTPUT_FOLDER, "model_type.txt")
-    train_file = os.path.join(OUTPUT_FOLDER, "training_filename.txt")
+        model_file = os.path.join(OUTPUT_FOLDER, "model_type.txt")
+        train_file = os.path.join(OUTPUT_FOLDER, "training_filename.txt")
 
-    if os.path.exists(model_file):
-        with open(model_file) as f:
-            model_type = f.read().strip()
+        if os.path.exists(model_file):
+            with open(model_file) as f:
+                model_type = f.read().strip()
 
-    if os.path.exists(train_file):
-        with open(train_file) as f:
-            training_file = f.read().strip()
+        if os.path.exists(train_file):
+            with open(train_file) as f:
+                training_file = f.read().strip()
 
-    if request.method == "POST":
-        uploaded_file = request.files.get("file")
-        if uploaded_file and uploaded_file.filename:
-            filename = uploaded_file.filename
-            filepath = os.path.join(UPLOAD_FOLDER, uploaded_file.filename)
-            uploaded_file.save(filepath)
+        if request.method == "POST":
+            uploaded_file = request.files.get("file")
+            if uploaded_file and uploaded_file.filename:
+                filename = uploaded_file.filename
+                filepath = os.path.join(UPLOAD_FOLDER, uploaded_file.filename)
+                uploaded_file.save(filepath)
 
-            try:
-                input_df = pd.read_csv(filepath)
+                try:
+                    input_df = pd.read_csv(filepath)
 
-                # Load saved target column
-                saved_target_column = None
-                if os.path.exists(TARGET_COLUMN_PATH):
-                    with open(TARGET_COLUMN_PATH, "r") as f:
-                        saved_target_column = f.read().strip()
+                    # Load saved target column
+                    saved_target_column = None
+                    if os.path.exists(TARGET_COLUMN_PATH):
+                        with open(TARGET_COLUMN_PATH, "r") as f:
+                            saved_target_column = f.read().strip()
 
-                # Drop target column if present
-                if saved_target_column and saved_target_column in input_df.columns:
-                    input_df = input_df.drop(saved_target_column, axis=1)
+                    # Drop target column if present
+                    if saved_target_column and saved_target_column in input_df.columns:
+                        input_df = input_df.drop(saved_target_column, axis=1)
 
-                model = joblib.load(MODEL_PATH)
-                label_encoders = joblib.load(ENCODER_PATH)
+                    model = joblib.load(MODEL_PATH)
+                    label_encoders = joblib.load(ENCODER_PATH)
 
-                expected_features = list(model.feature_names_in_)
-                missing = [col for col in expected_features if col not in input_df.columns]
+                    expected_features = list(model.feature_names_in_)
+                    missing = [col for col in expected_features if col not in input_df.columns]
 
-                if missing:
-                    return f"❗ Missing required columns: {missing} Please select the correct file to predict.<br> The columns in the CSV file for training (except target column) should match with the CSV file uploaded to predict!", 400
+                    if missing:
+                        return f"❗ Missing required columns: {missing} Please select the correct file to predict.<br> The columns in the CSV file for training (except target column) should match with the CSV file uploaded to predict!", 400
 
-                input_df = input_df[expected_features]
+                    input_df = input_df[expected_features]
 
-                for col in input_df.columns:
-                    if col in label_encoders and input_df[col].dtype == object:
-                        encoder = label_encoders[col]
-                        input_df[col] = encoder.transform(input_df[col])
+                    for col in input_df.columns:
+                        if col in label_encoders and input_df[col].dtype == object:
+                            encoder = label_encoders[col]
+                            input_df[col] = encoder.transform(input_df[col])
 
-                preds = predict_with_model(model, input_df, label_encoders)
-                input_df["Prediction"] = preds
+                    preds = predict_with_model(model, input_df, label_encoders)
+                    input_df["Prediction"] = preds
 
-                #prediction_counts = input_df["Prediction"].value_counts().to_dict()
+                    #prediction_counts = input_df["Prediction"].value_counts().to_dict()
 
-                # Handle income-like column dynamically
-                income_column = None
-                for col in input_df.columns:
-                    if "income" in col.lower():
-                        income_column = col
-                        break
+                    # Handle income-like column dynamically
+                    income_column = None
+                    for col in input_df.columns:
+                        if "income" in col.lower():
+                            income_column = col
+                            break
 
-                if income_column:
-                    income_counts = input_df[income_column].value_counts().sort_index().to_dict()
+                    if income_column:
+                        income_counts = input_df[income_column].value_counts().sort_index().to_dict()
 
-                # Decode categorical columns
-                for col, le in label_encoders.items():
-                    if col in input_df.columns:
-                        input_df[col] = le.inverse_transform(input_df[col])
+                    # Decode categorical columns
+                    for col, le in label_encoders.items():
+                        if col in input_df.columns:
+                            input_df[col] = le.inverse_transform(input_df[col])
 
-                # Decode prediction if target available
-                if saved_target_column and saved_target_column in label_encoders:
-                    if pd.api.types.is_numeric_dtype(input_df["Prediction"]):
-                        input_df["Prediction"] = label_encoders[saved_target_column].inverse_transform(input_df["Prediction"])
+                    # Decode prediction if target available
+                    if saved_target_column and saved_target_column in label_encoders:
+                        if pd.api.types.is_numeric_dtype(input_df["Prediction"]):
+                            input_df["Prediction"] = label_encoders[saved_target_column].inverse_transform(input_df["Prediction"])
 
-                #For charts
-                prediction_counts = input_df["Prediction"].value_counts().to_dict()
+                    #For charts
+                    prediction_counts = input_df["Prediction"].value_counts().to_dict()
 
-                # Save output
-                predictions_filename = filename.replace(".csv", "_predictions.csv")
-                predictions_path = os.path.join("webapp/static/uploads", predictions_filename)
-                input_df.to_csv(predictions_path, index=False)
-                download_file = os.path.join("uploads", predictions_filename).replace("\\", "/")
+                    # Save output
+                    predictions_filename = filename.replace(".csv", "_predictions.csv")
+                    predictions_path = os.path.join("webapp/static/uploads", predictions_filename)
+                    input_df.to_csv(predictions_path, index=False)
+                    download_file = os.path.join("uploads", predictions_filename).replace("\\", "/")
 
-                table = input_df.to_html(classes="table table-striped table-bordered text-start", index=False)
-                #message = "✅ Predictions created successfully!"
-                # After successful prediction
-                flash("✅ Predictions created successfully!", "success")
+                    table = input_df.to_html(classes="table table-striped table-bordered text-start", index=False)
+                    #message = "✅ Predictions created successfully!"
+                    # After successful prediction
+                    flash("✅ Predictions created successfully!", "success")
 
-            except Exception as e:
-                return f"Error: {e}", 500
+                except Exception as e:
+                    return f"Error: {e}", 500
 
-    return render_template(
-        "index.html",
-        table=table,
-        image_path=image_path if os.path.exists(PLOT_PATH) else None,
-        download_file=download_file,
-        prediction_counts=prediction_counts,
-        income_counts=income_counts,
-        message=message,
-        model_type=model_type, 
-        training_file=training_file
-    )
+        return render_template(
+            "index.html",
+            table=table,
+            image_path=image_path if os.path.exists(PLOT_PATH) else None,
+            download_file=download_file,
+            prediction_counts=prediction_counts,
+            income_counts=income_counts,
+            message=message,
+            model_type=model_type, 
+            training_file=training_file
+        )
+    except Exception as e:
+            traceback.print_exc()
+            return f"<h3>Error in index route:</h3><pre>{str(e)}</pre>", 500
 
 
 @app.route("/train", methods=["GET", "POST"])
