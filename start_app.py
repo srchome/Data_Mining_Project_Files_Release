@@ -1,4 +1,5 @@
 import webbrowser
+import pandas as pd
 from threading import Timer
 from app import app
 
