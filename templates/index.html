@@ -74,8 +74,25 @@
     <form method="POST" action="{{ url_for('clear_uploads') }}">
         <button class="btn btn-outline-danger" type="submit">🗑️ Clear All Uploads</button>
     </form>
+    <!--
+    <form action="/shutdown" method="post" onsubmit="return confirm('Are you sure you want to close the app? If yes, you will have to close the bowser manually');">
+        <button type="submit" class="btn btn-danger">Exit App</button>
+    </form>
+    -->
+    <button onclick="shutdownApp()" class="btn btn-danger">Exit Application</button>
+  
 </div>
-
+<script>
+    function shutdownApp() {
+        fetch('/shutdown', { method: 'POST' })
+            .then(() => {
+                window.location.href = '/goodbye';
+            })
+            .catch(err => {
+                alert("Error while shutting down: " + err);
+            });
+    }
+    </script>
 <!-- Model Info -->
 {% if model_type and training_file %}
 <div class="alert alert-secondary">

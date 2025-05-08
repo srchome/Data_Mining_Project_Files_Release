@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, send_file
 import traceback
 import pandas as pd
 import joblib
+import threading
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -313,6 +314,34 @@ def clear_uploads():
 
     except Exception as e:
         return f"❌ Error clearing uploads: {e}", 500
+    
+"""
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    try:
+        func = request.environ.get('werkzeug.server.shutdown')
+        if func is not None:
+            func()
+        else:
+            print("Not running with the Werkzeug Server. Forcing exit.")
+            clear_uploads()
+            os._exit(0)  # Forceful termination
+    except Exception as e:
+        print("Error during shutdown:", e)
+        clear_uploads()
+        os._exit(1)  # Exit with error code
+    return 'Server shutting down...'
+"""
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    # Trigger shutdown after short delay (to allow goodbye page to redirect)
+    threading.Timer(1.5, lambda: os._exit(0)).start()
+    return '', 200 #return immediately
+
+@app.route('/goodbye')
+def goodbye():
+    clear_uploads()
+    return render_template('goodbye.html')
 
 if __name__ == "__main__":
     app.run(debug=True)
