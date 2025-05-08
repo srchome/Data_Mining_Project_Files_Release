@@ -146,8 +146,9 @@ def index():
             training_file=training_file
         )
     except Exception as e:
-            traceback.print_exc()
-            return f"<h3>Error in index route:</h3><pre>{str(e)}</pre>", 500
+        import traceback
+        error_trace = traceback.format_exc()
+        return f"<pre><strong>❌ Unexpected error occurred:</strong>\n{error_trace}</pre>", 500
 
 
 @app.route("/train", methods=["GET", "POST"])
